@@ -83,7 +83,7 @@ def enhance_p_sample(diffusion, model, x_start, steps, batch_indices, sampling_n
         return diffusion._p_sample_original(model, x_start, steps, sampling_noise)
     
     # Create an enhanced batch with target users and their neighbors
-    enhanced_indices, index_mapping = optimized_enhanced_batch_sampling(
+    enhanced_indices, index_mapping = enhanced_batch_sampling(
         batch_indices, 
         diffusion.top_k_similar_users, 
         x_start.shape[0]
@@ -94,6 +94,7 @@ def enhance_p_sample(diffusion, model, x_start, steps, batch_indices, sampling_n
     
     # Run the diffusion sampling process on the enhanced batch
     enhanced_results = diffusion._p_sample_original(model, enhanced_vectors, steps, sampling_noise)
+    #enhanced_results = diffusion.p_sample(model, enhanced_vectors, steps, sampling_noise, batch_indices=enhanced_indices)
     
     # Pre-allocate final results tensor
     final_results = torch.zeros_like(x_start)

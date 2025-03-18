@@ -64,22 +64,30 @@ def enhanced_evaluate(diffusion, model, data_loader, data_te, mask_his, topN):
             his_data_tensor = torch.tensor(his_data, device=batch.device)
             
             # Enhanced sampling using batch indices (optimized)
-            if hasattr(diffusion, 'use_enhanced_sampling') and diffusion.use_enhanced_sampling:
-                prediction = diffusion.p_sample(
+            # if hasattr(diffusion, 'use_enhanced_sampling') and diffusion.use_enhanced_sampling:
+            #     prediction = diffusion.p_sample(
+            #         model, 
+            #         batch, 
+            #         diffusion.sampling_steps, 
+            #         diffusion.sampling_noise,
+            #         batch_indices=batch_indices
+            #     )
+            # else:
+            #     # Fallback to regular sampling if enhanced sampling is not available
+            #     prediction = diffusion.p_sample(
+            #         model, 
+            #         batch, 
+            #         diffusion.sampling_steps, 
+            #         diffusion.sampling_noise
+            #     )
+            
+            prediction = diffusion.p_sample(
                     model, 
                     batch, 
                     diffusion.sampling_steps, 
                     diffusion.sampling_noise,
                     batch_indices=batch_indices
-                )
-            else:
-                # Fallback to regular sampling if enhanced sampling is not available
-                prediction = diffusion.p_sample(
-                    model, 
-                    batch, 
-                    diffusion.sampling_steps, 
-                    diffusion.sampling_noise
-                )
+            )
             
             # Apply historical interaction mask (vectorized)
             prediction.masked_fill_(his_data_tensor > 0, -float('inf'))

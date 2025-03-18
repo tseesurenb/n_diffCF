@@ -215,7 +215,7 @@ def precompute_similarity_data(train_data, top_k=10, save_path='./cache/'):
     os.makedirs(save_path, exist_ok=True)
     
     # File paths for cached data
-    sim_matrix_path = os.path.join(save_path, f'similarity_matrix.pt')
+    sim_matrix_path = os.path.join(save_path, f'similarity_matrix_{top_k}.pt')
     top_k_users_path = os.path.join(save_path, f'top_k_users_{top_k}.pt')
     top_k_scores_path = os.path.join(save_path, f'top_k_scores_{top_k}.pt')
     
