@@ -1,11 +1,11 @@
 import torch
 import numpy as np
 from evaluate_utils import computeTopNAccuracy
-from tqdm import tqdm
+import sys
 
 def enhanced_evaluate(diffusion, model, data_loader, data_te, mask_his, topN):
     """
-    Optimized enhanced evaluation function with batch processing and vectorized operations.
+    Optimized enhanced evaluation function with batch processing and a simple percentage progress indicator.
     
     Args:
         diffusion: EnhancedGaussianDiffusion
@@ -38,10 +38,17 @@ def enhanced_evaluate(diffusion, model, data_loader, data_te, mask_his, topN):
     max_k = max(topN)
     predict_items = [[] for _ in range(e_N)]
     
+    # Calculate total number of batches for progress tracking
+    total_batches = len(data_loader)
+    
     # Use GPU batch processing
     with torch.no_grad():
-        # Show progress bar for better monitoring
-        for batch_idx, batch in enumerate(tqdm(data_loader, desc="Evaluating")):
+        for batch_idx, batch in enumerate(data_loader):
+            # Calculate and display simple percentage progress
+            progress = (batch_idx / total_batches) * 100
+            sys.stdout.write(f"\rEvaluating: {progress:.1f}%")
+            sys.stdout.flush()
+            
             # Get the indices of users in this batch
             batch_start = batch_idx * data_loader.batch_size
             batch_end = min(batch_start + data_loader.batch_size, e_N)
@@ -85,7 +92,11 @@ def enhanced_evaluate(diffusion, model, data_loader, data_te, mask_his, topN):
             for i, user_idx in enumerate(user_indices):
                 predict_items[user_idx] = indices_cpu[i].tolist()
     
-    # Use vectorized accuracy computation
+    # Print 100% completion and new line
+    sys.stdout.write("\rEvaluating: 100.0%\n")
+    sys.stdout.flush()
+    
+    # Use computeTopNAccuracy to match existing code
     test_results = computeTopNAccuracy(target_items, predict_items, topN)
 
     return test_results
