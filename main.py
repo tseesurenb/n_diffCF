@@ -9,7 +9,7 @@ import torch.utils.data as data
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import sys
 
 # Set command line arguments for Jupyter notebook environment
