@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from evaluate_utils import computeTopNAccuracy
+from tqdm import tqdm
 
 def enhanced_evaluate(diffusion, model, data_loader, data_te, mask_his, topN):
     """
