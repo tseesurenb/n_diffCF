@@ -93,7 +93,7 @@ class EnhancedGaussianDiffusion(nn.Module):
             self.calculate_for_diffusion()
 
         super(EnhancedGaussianDiffusion, self).__init__()
-    
+        
     def initialize_similarity_matrix(self, user_item_matrix):
         """
         Initialize the user similarity matrix.
@@ -120,6 +120,30 @@ class EnhancedGaussianDiffusion(nn.Module):
         )
         print("User similarity initialization complete!")
     
+    def set_precomputed_similarity_data(self, similarity_matrix, top_k_similar_users, top_k_similarities, full_user_vectors):
+        """
+        Set precomputed similarity data instead of calculating from scratch.
+        
+        Args:
+            similarity_matrix: torch.Tensor
+                Precomputed similarity matrix
+            top_k_similar_users: torch.Tensor
+                Precomputed top-k similar users
+            top_k_similarities: torch.Tensor
+                Precomputed similarity scores for top-k users
+            full_user_vectors: torch.Tensor
+                Full user-item interaction matrix
+        """
+        if not self.use_similarity:
+            print("Warning: Similarity data provided but use_similarity is set to False.")
+            return
+            
+        self.similarity_matrix = similarity_matrix
+        self.top_k_similar_users = top_k_similar_users
+        self.top_k_similarities = top_k_similarities
+        self.full_user_vectors = full_user_vectors
+        print("Precomputed similarity data set successfully.")
+        
     def get_betas(self):
         """
         Given the schedule name, create the betas for the diffusion process.

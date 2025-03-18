@@ -189,76 +189,63 @@ def aggregate_similar_users_old(user_vectors, full_user_vectors, top_k_similar_u
     
     return aggregated_vectors
 
-# def aggregate_similar_users(user_vectors, full_user_vectors, top_k_similar_users, top_k_similarities, gamma=0.7, temperature=0.5):
-#     """
-#     Aggregate user vectors with their similar users' vectors using classic KNN user-based CF approach.
+
+def precompute_similarity_data(train_data, top_k=10, save_path='./cache/'):
+    """
+    Precompute and save the similarity matrix and top-k similar users.
     
-#     Args:
-#         user_vectors: torch.Tensor
-#             Current user vectors to aggregate
-#         full_user_vectors: torch.Tensor
-#             Complete user-item interaction matrix for all users
-#         top_k_similar_users: torch.Tensor
-#             Indices of the top-k similar users for ALL users
-#         top_k_similarities: torch.Tensor
-#             Similarity scores of the top-k similar users for ALL users
-#         gamma: float
-#             Weight for user's own vector, (1-gamma) will be weight for similar users
-#         temperature: float
-#             Temperature parameter for similarity weighting (lower = more emphasis on high similarities)
+    Args:
+        train_data: scipy.sparse.csr_matrix
+            User-item interaction matrix
+        top_k: int
+            Number of similar users to consider
+        save_path: str
+            Path to save the cached data
             
-#     Returns:
-#         aggregated_vectors: torch.Tensor
-#             Aggregated user vectors
-#     """
-#     device = user_vectors.device
-#     batch_size = user_vectors.size(0)
-#     vector_dim = user_vectors.size(1)
-#     top_k = top_k_similar_users.size(1)
+    Returns:
+        similarity_matrix: torch.Tensor
+            Precomputed similarity matrix
+        top_k_similar_users: torch.Tensor
+            Precomputed top-k similar users
+        top_k_similarities: torch.Tensor
+            Precomputed similarity scores for top-k users
+    """
+    # Create cache directory if it doesn't exist
+    os.makedirs(save_path, exist_ok=True)
     
-#     # Initialize tensor to hold KNN predictions
-#     knn_predictions = torch.zeros_like(user_vectors)
+    # File paths for cached data
+    sim_matrix_path = os.path.join(save_path, f'similarity_matrix.pt')
+    top_k_users_path = os.path.join(save_path, f'top_k_users_{top_k}.pt')
+    top_k_scores_path = os.path.join(save_path, f'top_k_scores_{top_k}.pt')
     
-#     # Process each user vector in the batch
-#     for i in range(batch_size):
-#         # Get the current user's similar users
-#         similar_indices = top_k_similar_users[i]
+    # Check if cached data exists
+    if (os.path.exists(sim_matrix_path) and 
+        os.path.exists(top_k_users_path) and 
+        os.path.exists(top_k_scores_path)):
+        print("Loading precomputed similarity data from cache...")
+        similarity_matrix = torch.load(sim_matrix_path)
+        top_k_similar_users = torch.load(top_k_users_path)
+        top_k_similarities = torch.load(top_k_scores_path)
         
-#         # Get similarity scores for the current user's similar users
-#         similarities = top_k_similarities[i]
-        
-#         # Apply temperature scaling to similarities (temperature < 1 emphasizes higher similarities)
-#         scaled_similarities = similarities / temperature
-        
-#         # Classic KNN approach uses normalized similarities as weights
-#         # We'll clip to ensure no negative similarities are used
-#         similarity_weights = torch.clamp(scaled_similarities, min=0)
-        
-#         # Normalize weights to sum to 1 (if any positive similarities exist)
-#         weight_sum = similarity_weights.sum()
-#         if weight_sum > 0:
-#             similarity_weights = similarity_weights / weight_sum
-        
-#         # Get vectors for all similar users
-#         similar_user_vectors = full_user_vectors[similar_indices]
-        
-#         # For each item, predict rating as weighted average of similar users' ratings
-#         # Only consider items where similar users have expressed interest
-#         weighted_sum = torch.zeros(vector_dim, device=device)
-        
-#         for j in range(top_k):
-#             # Get this similar user's vector and similarity weight
-#             similar_vector = similar_user_vectors[j]
-#             weight = similarity_weights[j]
-            
-#             # Apply weighted contribution
-#             weighted_sum += weight * similar_vector
-        
-#         # Store the KNN prediction for this user
-#         knn_predictions[i] = weighted_sum
+        return similarity_matrix, top_k_similar_users, top_k_similarities
     
-#     # Combine the user's own vector with the KNN prediction using gamma
-#     # This is a common approach to balance personalization with collaborative info
-#     aggregated_vectors = gamma * user_vectors + (1 - gamma) * knn_predictions
+    # If cached data doesn't exist, compute it
+    print("Computing similarity matrix...")
+    from user_similarity import compute_cosine_similarity_matrix, get_top_k_similar_users
+
+    # Compute the similarity matrix
+    similarity_matrix = compute_cosine_similarity_matrix(train_data)
     
-#     return aggregated_vectors
+    # Get top-k similar users and their similarity scores
+    print(f"Finding top-{top_k} similar users for each user...")
+    top_k_similar_users, top_k_similarities = get_top_k_similar_users(
+        similarity_matrix, k=top_k, exclude_self=True
+    )
+    
+    # Save to cache
+    print("Saving similarity data to cache...")
+    torch.save(similarity_matrix, sim_matrix_path)
+    torch.save(top_k_similar_users, top_k_users_path)
+    torch.save(top_k_similarities, top_k_scores_path)
+    
+    return similarity_matrix, top_k_similar_users, top_k_similarities
