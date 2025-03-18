@@ -5,6 +5,7 @@ import scipy.sparse as sp
 from scipy.sparse import csr_matrix, coo_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
+import os
 
 def compute_cosine_similarity_matrix(matrix, top_k=1000, self_loop=False, verbose=1):
     """
