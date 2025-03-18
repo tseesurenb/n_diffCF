@@ -189,76 +189,76 @@ def aggregate_similar_users_old(user_vectors, full_user_vectors, top_k_similar_u
     
     return aggregated_vectors
 
-def aggregate_similar_users(user_vectors, full_user_vectors, top_k_similar_users, top_k_similarities, gamma=0.7, temperature=0.5):
-    """
-    Aggregate user vectors with their similar users' vectors using classic KNN user-based CF approach.
+# def aggregate_similar_users(user_vectors, full_user_vectors, top_k_similar_users, top_k_similarities, gamma=0.7, temperature=0.5):
+#     """
+#     Aggregate user vectors with their similar users' vectors using classic KNN user-based CF approach.
     
-    Args:
-        user_vectors: torch.Tensor
-            Current user vectors to aggregate
-        full_user_vectors: torch.Tensor
-            Complete user-item interaction matrix for all users
-        top_k_similar_users: torch.Tensor
-            Indices of the top-k similar users for ALL users
-        top_k_similarities: torch.Tensor
-            Similarity scores of the top-k similar users for ALL users
-        gamma: float
-            Weight for user's own vector, (1-gamma) will be weight for similar users
-        temperature: float
-            Temperature parameter for similarity weighting (lower = more emphasis on high similarities)
+#     Args:
+#         user_vectors: torch.Tensor
+#             Current user vectors to aggregate
+#         full_user_vectors: torch.Tensor
+#             Complete user-item interaction matrix for all users
+#         top_k_similar_users: torch.Tensor
+#             Indices of the top-k similar users for ALL users
+#         top_k_similarities: torch.Tensor
+#             Similarity scores of the top-k similar users for ALL users
+#         gamma: float
+#             Weight for user's own vector, (1-gamma) will be weight for similar users
+#         temperature: float
+#             Temperature parameter for similarity weighting (lower = more emphasis on high similarities)
             
-    Returns:
-        aggregated_vectors: torch.Tensor
-            Aggregated user vectors
-    """
-    device = user_vectors.device
-    batch_size = user_vectors.size(0)
-    vector_dim = user_vectors.size(1)
-    top_k = top_k_similar_users.size(1)
+#     Returns:
+#         aggregated_vectors: torch.Tensor
+#             Aggregated user vectors
+#     """
+#     device = user_vectors.device
+#     batch_size = user_vectors.size(0)
+#     vector_dim = user_vectors.size(1)
+#     top_k = top_k_similar_users.size(1)
     
-    # Initialize tensor to hold KNN predictions
-    knn_predictions = torch.zeros_like(user_vectors)
+#     # Initialize tensor to hold KNN predictions
+#     knn_predictions = torch.zeros_like(user_vectors)
     
-    # Process each user vector in the batch
-    for i in range(batch_size):
-        # Get the current user's similar users
-        similar_indices = top_k_similar_users[i]
+#     # Process each user vector in the batch
+#     for i in range(batch_size):
+#         # Get the current user's similar users
+#         similar_indices = top_k_similar_users[i]
         
-        # Get similarity scores for the current user's similar users
-        similarities = top_k_similarities[i]
+#         # Get similarity scores for the current user's similar users
+#         similarities = top_k_similarities[i]
         
-        # Apply temperature scaling to similarities (temperature < 1 emphasizes higher similarities)
-        scaled_similarities = similarities / temperature
+#         # Apply temperature scaling to similarities (temperature < 1 emphasizes higher similarities)
+#         scaled_similarities = similarities / temperature
         
-        # Classic KNN approach uses normalized similarities as weights
-        # We'll clip to ensure no negative similarities are used
-        similarity_weights = torch.clamp(scaled_similarities, min=0)
+#         # Classic KNN approach uses normalized similarities as weights
+#         # We'll clip to ensure no negative similarities are used
+#         similarity_weights = torch.clamp(scaled_similarities, min=0)
         
-        # Normalize weights to sum to 1 (if any positive similarities exist)
-        weight_sum = similarity_weights.sum()
-        if weight_sum > 0:
-            similarity_weights = similarity_weights / weight_sum
+#         # Normalize weights to sum to 1 (if any positive similarities exist)
+#         weight_sum = similarity_weights.sum()
+#         if weight_sum > 0:
+#             similarity_weights = similarity_weights / weight_sum
         
-        # Get vectors for all similar users
-        similar_user_vectors = full_user_vectors[similar_indices]
+#         # Get vectors for all similar users
+#         similar_user_vectors = full_user_vectors[similar_indices]
         
-        # For each item, predict rating as weighted average of similar users' ratings
-        # Only consider items where similar users have expressed interest
-        weighted_sum = torch.zeros(vector_dim, device=device)
+#         # For each item, predict rating as weighted average of similar users' ratings
+#         # Only consider items where similar users have expressed interest
+#         weighted_sum = torch.zeros(vector_dim, device=device)
         
-        for j in range(top_k):
-            # Get this similar user's vector and similarity weight
-            similar_vector = similar_user_vectors[j]
-            weight = similarity_weights[j]
+#         for j in range(top_k):
+#             # Get this similar user's vector and similarity weight
+#             similar_vector = similar_user_vectors[j]
+#             weight = similarity_weights[j]
             
-            # Apply weighted contribution
-            weighted_sum += weight * similar_vector
+#             # Apply weighted contribution
+#             weighted_sum += weight * similar_vector
         
-        # Store the KNN prediction for this user
-        knn_predictions[i] = weighted_sum
+#         # Store the KNN prediction for this user
+#         knn_predictions[i] = weighted_sum
     
-    # Combine the user's own vector with the KNN prediction using gamma
-    # This is a common approach to balance personalization with collaborative info
-    aggregated_vectors = gamma * user_vectors + (1 - gamma) * knn_predictions
+#     # Combine the user's own vector with the KNN prediction using gamma
+#     # This is a common approach to balance personalization with collaborative info
+#     aggregated_vectors = gamma * user_vectors + (1 - gamma) * knn_predictions
     
-    return aggregated_vectors
+#     return aggregated_vectors

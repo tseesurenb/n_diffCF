@@ -5,7 +5,7 @@ import torch as th
 import torch.nn.functional as F
 import torch.nn as nn
 import scipy.sparse as sp
-from user_similarity import compute_cosine_similarity_matrix, get_top_k_similar_users, aggregate_similar_users
+from user_similarity import compute_cosine_similarity_matrix, get_top_k_similar_users
 
 class ModelMeanType(enum.Enum):
     START_X = enum.auto()  # the model predicts x_0
@@ -249,37 +249,37 @@ class EnhancedGaussianDiffusion(nn.Module):
             else:
                 x_t = out["mean"]
                 
-            # Apply user similarity aggregation at the final step, only in the original method
-            if i == 0 and self.use_similarity and self.similarity_matrix is not None:
-                # Only apply similarity aggregation at the final denoising step
-                x_t = self.apply_similarity_aggregation(x_t)
+            # # Apply user similarity aggregation at the final step, only in the original method
+            # if i == 0 and self.use_similarity and self.similarity_matrix is not None:
+            #     # Only apply similarity aggregation at the final denoising step
+            #     x_t = self.apply_similarity_aggregation(x_t)
                 
         return x_t
     
-    def apply_similarity_aggregation(self, user_vectors):
-        """
-        Apply similarity-based aggregation to user vectors.
+    # def apply_similarity_aggregation(self, user_vectors):
+    #     """
+    #     Apply similarity-based aggregation to user vectors.
         
-        Args:
-            user_vectors: torch.Tensor
-                The user vectors to aggregate
+    #     Args:
+    #         user_vectors: torch.Tensor
+    #             The user vectors to aggregate
                 
-        Returns:
-            aggregated_vectors: torch.Tensor
-                The aggregated user vectors
-        """
-        if not self.use_similarity or self.similarity_matrix is None:
-            return user_vectors
+    #     Returns:
+    #         aggregated_vectors: torch.Tensor
+    #             The aggregated user vectors
+    #     """
+    #     if not self.use_similarity or self.similarity_matrix is None:
+    #         return user_vectors
             
-        # Use the top-k similar users to aggregate vectors
-        return aggregate_similar_users(
-            user_vectors, 
-            self.full_user_vectors,  # Use the stored full user-item matrix
-            self.top_k_similar_users, 
-            self.top_k_similarities, 
-            gamma=self.gamma,
-            temperature=self.temperature
-        )
+    #     # Use the top-k similar users to aggregate vectors
+    #     return aggregate_similar_users(
+    #         user_vectors, 
+    #         self.full_user_vectors,  # Use the stored full user-item matrix
+    #         self.top_k_similar_users, 
+    #         self.top_k_similarities, 
+    #         gamma=self.gamma,
+    #         temperature=self.temperature
+    #     )
     
     def training_losses(self, model, x_start, reweight=False):
         batch_size, device = x_start.size(0), x_start.device
