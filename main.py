@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=0.0)
     parser.add_argument('--batch_size', type=int, default=400)
     parser.add_argument('--epochs', type=int, default=100, help='upper epoch limit')
-    parser.add_argument('--topN', type=str, default='[10, 20]')
+    parser.add_argument('--topN', type=str, default='[20]')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
@@ -208,7 +208,7 @@ def train_model(args, train_data, valid_y_data, test_y_data, n_user, n_item, run
         pbar.set_description(f"Epoch {epoch:03d} | Loss {total_loss:.4f}")
 
         # Evaluation every 5 epochs
-        if epoch % 5 == 0:
+        if epoch % 10 == 0:
             # Use the enhanced evaluation function that includes batch indices
             valid_results = enhanced_evaluate(
                 diffusion, model, test_loader, valid_y_data, train_data, eval(args.topN)
