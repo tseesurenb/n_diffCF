@@ -301,6 +301,17 @@ def train_model(args, train_data, valid_y_data, test_y_data, n_user, n_item, run
     return diffusion, model
 
 def main():
+    
+    # Set up device
+    #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    #device = torch.device("cuda:0" if args.cuda else "cpu")
+    #device = torch.device("cuda" if args.cuda else "cpu")
+    #print(f"Using device: {device}")
+    
+    # STEP 1: Set the device
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Device: {device}")
+    
     # Parse arguments
     args = parse_args()
     
@@ -329,11 +340,7 @@ def main():
     # Set random seed for reproducibility
     set_seed(42)
     
-    # Set up device
-    #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    #device = torch.device("cuda:0" if args.cuda else "cpu")
-    device = torch.device("cuda" if args.cuda else "cpu")
-    print(f"Using device: {device}")
+    
     
     # Load data
     train_path = args.data_path + args.dataset + '/train_list.npy'
