@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import sys
 from ablation_study import run_ablation_study
 
