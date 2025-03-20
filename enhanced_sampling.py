@@ -20,6 +20,13 @@ def enhanced_batch_sampling(user_indices, top_k_similar_users, batch_size):
         index_mapping: dict
             Mapping from original indices to positions in the enhanced batch
     """
+    # Ensure both tensors are on the same device
+    device = user_indices.device
+    
+    # Move top_k_similar_users to the same device as user_indices if they're not already
+    if top_k_similar_users.device != device:
+        top_k_similar_users = top_k_similar_users.to(device)
+    
     # Get top-k similar users for each user in the batch
     batch_similar_users = top_k_similar_users[user_indices]
     
