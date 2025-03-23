@@ -12,10 +12,10 @@ import sys
 from ablation_study import run_ablation_study
 
 # Import custom modules
-from models.enhanced_gaussian_diffusion import EnhancedGaussianDiffusion, ModelMeanType
+from models.enhanced_gaussian_diffusion_knn import EnhancedGaussianDiffusion, ModelMeanType
 from models.DNN import DNN
-from evaluation_update import enhanced_evaluate
-import evaluate_utils
+from enhanced_evaluation import enhanced_evaluate
+import utils
 import data_utils
 from user_similarity import precompute_similarity_data
 
@@ -273,7 +273,7 @@ def train_model(args, train_data, valid_y_data, test_y_data, n_user, n_item, run
     # Final results
     print('='*54)
     print(f"End. Best Epoch {best_epoch:03d}")
-    evaluate_utils.print_results(None, best_results, best_test_results)
+    utils.print_results(None, best_results, best_test_results)
     
     # Plot training progress
     plt.figure(figsize=(12, 10))

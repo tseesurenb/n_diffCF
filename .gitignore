@@ -1,3 +1,6 @@
 wandb/
 saved_models/
 cache/
+results/
+logs/
+__pycache__/

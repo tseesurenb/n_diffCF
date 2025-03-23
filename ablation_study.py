@@ -4,9 +4,9 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
 # Import custom modules
-from models.enhanced_gaussian_diffusion import EnhancedGaussianDiffusion, ModelMeanType
+from models.enhanced_gaussian_diffusion_knn import EnhancedGaussianDiffusion, ModelMeanType
 from models.DNN import DNN
-from evaluation_update import enhanced_evaluate
+from enhanced_evaluation import enhanced_evaluate
 import data_utils
 
 def run_ablation_study(args, train_data, valid_y_data, test_y_data, n_user, n_item, device):

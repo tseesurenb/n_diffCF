@@ -11,7 +11,7 @@ class ModelMeanType(enum.Enum):
     START_X = enum.auto()  # the model predicts x_0
     EPSILON = enum.auto()  # the model predicts epsilon
 
-class EnhancedGaussianDiffusion(nn.Module):
+class EnhancedGaussianDiffusionKNN(nn.Module):
     def __init__(
         self, 
         mean_type, 
@@ -29,7 +29,7 @@ class EnhancedGaussianDiffusion(nn.Module):
         temperature=0.5
     ):
         """
-        Enhanced Gaussian Diffusion with user similarity integration.
+        Enhanced Gaussian Diffusion with KNN integration for post-diffusion recommendation.
         
         Args:
             mean_type: ModelMeanType
@@ -92,7 +92,7 @@ class EnhancedGaussianDiffusion(nn.Module):
 
             self.calculate_for_diffusion()
 
-        super(EnhancedGaussianDiffusion, self).__init__()
+        super(EnhancedGaussianDiffusionKNN, self).__init__()
         
     def initialize_similarity_matrix(self, user_item_matrix):
         """
@@ -138,10 +138,10 @@ class EnhancedGaussianDiffusion(nn.Module):
             print("Warning: Similarity data provided but use_similarity is set to False.")
             return
             
-        self.similarity_matrix = similarity_matrix
-        self.top_k_similar_users = top_k_similar_users
-        self.top_k_similarities = top_k_similarities
-        self.full_user_vectors = full_user_vectors
+        self.similarity_matrix = similarity_matrix.to(self.device)
+        self.top_k_similar_users = top_k_similar_users.to(self.device)
+        self.top_k_similarities = top_k_similarities.to(self.device)
+        self.full_user_vectors = full_user_vectors.to(self.device)
         print("Precomputed similarity data set successfully.")
         
     def get_betas(self):
@@ -198,10 +198,7 @@ class EnhancedGaussianDiffusion(nn.Module):
     
     def p_sample(self, model, x_start, steps, sampling_noise=False, batch_indices=None):
         """
-        Enhanced sample method that uses the original implementation but with batch indices.
-        
-        This is a wrapper that decides whether to use the enhanced sampling or the original
-        based on whether batch_indices are provided.
+        Enhanced sample method with proper KNN integration after diffusion process.
         
         Args:
             model: nn.Module
@@ -217,24 +214,21 @@ class EnhancedGaussianDiffusion(nn.Module):
                 
         Returns:
             x_t: torch.Tensor
-                The sampled tensor
+                The sampled tensor with KNN-enhanced predictions
         """
-        # If batch indices are provided and similarity is enabled, use enhanced sampling
-        if batch_indices is not None and self.use_similarity and self.top_k_similar_users is not None:
-            from enhanced_sampling import enhance_p_sample
-            return enhance_p_sample(self, model, x_start, steps, batch_indices, sampling_noise)
-        else:
-            # Otherwise use the original sampling method
-            print("Using original sampling method.")
-            print("if batch is not None:", batch_indices is not None)
-            print("Similarity enabled:", self.use_similarity)
-            print("Similarity data available:", self.top_k_similar_users is not None)
-            
-            return self._p_sample_original(model, x_start, steps, sampling_noise)
+        # First perform standard diffusion sampling without any KNN aggregation
+        predictions = self._p_sample_original(model, x_start, steps, sampling_noise)
+        
+        # Only apply KNN aggregation after diffusion if enabled
+        if self.use_similarity and batch_indices is not None and self.top_k_similar_users is not None:
+            # Apply KNN aggregation on the diffusion predictions
+            return self._apply_knn_aggregation(predictions, batch_indices)
+        
+        return predictions
     
     def _p_sample_original(self, model, x_start, steps, sampling_noise=False):
         """
-        Original sampling method without the enhanced batch processing.
+        Original p_sample method without KNN integration.
         
         Args:
             model: nn.Module
@@ -250,7 +244,8 @@ class EnhancedGaussianDiffusion(nn.Module):
             x_t: torch.Tensor
                 The sampled tensor
         """
-        assert steps <= self.steps, "Too much steps in inference."
+        assert steps <= self.steps, "Too many steps in inference."
+        
         if steps == 0:
             x_t = x_start
         else:
@@ -280,9 +275,137 @@ class EnhancedGaussianDiffusion(nn.Module):
                 
         return x_t
     
+    def _apply_knn_aggregation_self(self, predictions, batch_indices):
+        batch_size = predictions.size(0)
+        device = predictions.device
+        
+        # Initialize tensor for aggregated predictions
+        aggregated_predictions = th.zeros_like(predictions)
+        
+        for i in range(batch_size):
+            user_idx = batch_indices[i]
+            user_pred = predictions[i]
+            
+            # Get similar users for this user
+            similar_indices = self.top_k_similar_users[user_idx]
+            similar_weights = self.top_k_similarities[user_idx]
+            
+            # Create extended arrays that include the user itself
+            extended_indices = th.cat([th.tensor([user_idx], device=device), similar_indices])
+            extended_weights = th.cat([th.tensor([1.0], device=device), similar_weights])
+            
+            # Apply normalization (either simple normalization or softmax)
+            # Simple normalization:
+            # weights = extended_weights / extended_weights.sum()
+            # Or softmax:
+            weights = th.softmax(extended_weights, dim=0)
+            
+            # Create tensor to hold all predictions (including the user's own)
+            all_preds = th.zeros((len(extended_indices), predictions.size(1)), device=device)
+            all_preds[0] = user_pred  # User's own prediction
+            
+            # Retrieve the predictions for similar users
+            for j, sim_idx in enumerate(similar_indices):
+                # Find prediction for similar user (same logic as before)
+                match_indices = (batch_indices == sim_idx).nonzero(as_tuple=True)
+                
+                if len(match_indices[0]) > 0:
+                    sim_batch_idx = match_indices[0][0]
+                    all_preds[j+1] = predictions[sim_batch_idx]
+                else:
+                    all_preds[j+1] = self.full_user_vectors[sim_idx]
+            
+            # Apply weighted average of all predictions
+            aggregated_predictions[i] = th.sum(weights.unsqueeze(1) * all_preds, dim=0)
+        
+        return aggregated_predictions
+    
+    def _apply_knn_aggregation(self, predictions, batch_indices):
+        """
+        Apply KNN aggregation on the diffusion predictions.
+        
+        This is the key implementation of your idea: applying KNN aggregation
+        after the diffusion process has recovered user preferences.
+        
+        Args:
+            predictions: torch.Tensor
+                Recovered user vectors from diffusion process
+            batch_indices: torch.Tensor
+                Indices of users in the current batch
+                
+        Returns:
+            aggregated_predictions: torch.Tensor
+                KNN-enhanced predictions
+        """
+        batch_size = predictions.size(0)
+        device = predictions.device
+        
+        # Initialize tensor for aggregated predictions
+        aggregated_predictions = th.zeros_like(predictions)
+        
+        for i in range(batch_size):
+            user_idx = batch_indices[i]
+            user_pred = predictions[i]
+            
+            # Get similar users for this user
+            similar_indices = self.top_k_similar_users[user_idx]
+            similar_weights = self.top_k_similarities[user_idx]
+                        
+            # Replace this line
+            #weights = th.softmax(similar_weights / self.temperature, dim=0)
 
-    def training_losses(self, model, x_start, reweight=False):
+            # With this
+            weights = similar_weights / (similar_weights.sum() + 1e-10)  # normalize with small epsilon
+            
+            # Create tensor to hold similar users' predictions
+            similar_preds = th.zeros((self.top_k, predictions.size(1)), device=device)
+            
+            # Retrieve the predictions for similar users that are in the current batch
+            for j, sim_idx in enumerate(similar_indices):
+                # Check if similar user is in current batch
+                match_indices = (batch_indices == sim_idx).nonzero(as_tuple=True)
+                
+                if len(match_indices[0]) > 0:
+                    # Similar user is in the batch, use its prediction
+                    sim_batch_idx = match_indices[0][0]
+                    similar_preds[j] = predictions[sim_batch_idx]
+                else:
+                    # Similar user not in batch, use its original vector (less optimal)
+                    # In a full implementation, we would need to run predictions for all users
+                    # or maintain a cache of predictions
+                    similar_preds[j] = self.full_user_vectors[sim_idx]
+            
+            # Apply weighted average of similar users' predictions
+            similar_contribution = th.sum(weights.unsqueeze(1) * similar_preds, dim=0)
+            
+            # Combine user's own prediction with similar users' predictions
+            aggregated_predictions[i] = self.gamma * user_pred + (1 - self.gamma) * similar_contribution
+        
+        return aggregated_predictions
+    
+    def training_losses(self, model, x_start, batch_indices=None, reweight=False, knn_weight=0.3):
+        """
+        Modified training loss calculation that integrates KNN during the training process.
+        
+        Args:
+            model: nn.Module
+                The prediction model
+            x_start: torch.Tensor
+                The starting point for diffusion (user-item interaction vectors)
+            batch_indices: torch.Tensor
+                Indices of users in the current batch
+            reweight: bool
+                Whether to reweight loss terms
+            knn_weight: float
+                Weight for the KNN component in the combined loss
+                
+        Returns:
+            terms: dict
+                Dictionary containing loss terms
+        """
         batch_size, device = x_start.size(0), x_start.device
+        
+        # Sample timesteps
         ts, pt = self.sample_timesteps(batch_size, device, 'importance')
         noise = th.randn_like(x_start)
         
@@ -293,45 +416,144 @@ class EnhancedGaussianDiffusion(nn.Module):
 
         terms = {}
         model_output = model(x_t, ts)
-        target = {
-            ModelMeanType.START_X: x_start,
-            ModelMeanType.EPSILON: noise,
-        }[self.mean_type]
+        
+        if self.mean_type == ModelMeanType.START_X:
+            target = x_start
+        elif self.mean_type == ModelMeanType.EPSILON:
+            target = noise
+        else:
+            raise ValueError(f"Unknown mean type: {self.mean_type}")
+
+        assert model_output.shape == target.shape == x_start.shape
+
+        # Standard diffusion MSE loss
+        mse = mean_flat((target - model_output) ** 2)
+
+        if reweight:
+            if self.mean_type == ModelMeanType.START_X:
+                weight = self.SNR(ts - 1) - self.SNR(ts)
+                weight = th.where((ts == 0), th.ones_like(weight), weight)
+                loss = mse
+            elif self.mean_type == ModelMeanType.EPSILON:
+                weight = (1 - self.alphas_cumprod[ts]) / ((1-self.alphas_cumprod_prev[ts])**2 * (1-self.betas[ts]))
+                weight = th.where((ts == 0), th.ones_like(weight), weight)
+                likelihood = mean_flat((x_start - self._predict_xstart_from_eps(x_t, ts, model_output))**2 / 2.0)
+                loss = th.where((ts == 0), likelihood, mse)
+        else:
+            weight = th.ones_like(mse)
+
+        # Standard diffusion loss
+        standard_loss = weight * loss
+        
+        # Add KNN component to the loss if enabled and batch indices are provided
+        if self.use_similarity and batch_indices is not None and self.top_k_similar_users is not None:
+            # Use the current model to predict x_0 from x_t
+            if self.mean_type == ModelMeanType.START_X:
+                # Model directly predicts x_0
+                x_0_pred = model_output
+            else:  # EPSILON
+                # Convert epsilon prediction to x_0
+                x_0_pred = self._predict_xstart_from_eps(x_t, ts, model_output)
+            
+            # Detach to avoid backpropagating through diffusion process
+            x_0_pred_detached = x_0_pred.detach()
+            
+            # Apply KNN aggregation to the predicted x_0
+            knn_predictions = self._apply_knn_aggregation(x_0_pred_detached, batch_indices)
+            
+            # Calculate KNN loss: how well does the KNN-aggregated prediction match the target?
+            knn_mse = mean_flat((target - knn_predictions) ** 2)
+            knn_loss = weight * knn_mse
+            
+            # Combine standard diffusion loss with KNN loss
+            combined_loss = (1 - knn_weight) * standard_loss + knn_weight * knn_loss
+            terms["standard_loss"] = standard_loss
+            terms["knn_loss"] = knn_loss
+            terms["loss"] = combined_loss
+        else:
+            # If KNN not enabled, just use standard diffusion loss
+            terms["loss"] = standard_loss
+        
+        # Update Lt_history & Lt_count using the final loss
+        for t, l in zip(ts, terms["loss"]):
+            if self.Lt_count[t] == self.history_num_per_term:
+                Lt_history_old = self.Lt_history.clone()
+                self.Lt_history[t, :-1] = Lt_history_old[t, 1:]
+                self.Lt_history[t, -1] = l.detach()
+            else:
+                self.Lt_history[t, self.Lt_count[t]] = l.detach()
+                self.Lt_count[t] += 1
+
+        terms["loss"] /= pt
+        return terms
+
+    def training_losses_old(self, model, x_start, batch_indices=None, reweight=False):
+        """
+        Training loss calculation - no KNN during training process.
+        
+        Args:
+            model: nn.Module
+                The prediction model
+            x_start: torch.Tensor
+                The starting point for diffusion (user-item interaction vectors)
+            batch_indices: torch.Tensor
+                Indices of users in the current batch
+            reweight: bool
+                Whether to reweight loss terms
+                
+        Returns:
+            terms: dict
+                Dictionary containing loss terms
+        """
+        batch_size, device = x_start.size(0), x_start.device
+        
+        # Sample timesteps
+        ts, pt = self.sample_timesteps(batch_size, device, 'importance')
+        noise = th.randn_like(x_start)
+        
+        if self.noise_scale != 0.:
+            x_t = self.q_sample(x_start, ts, noise)
+        else:
+            x_t = x_start
+
+        terms = {}
+        model_output = model(x_t, ts)
+        
+        if self.mean_type == ModelMeanType.START_X:
+            target = x_start
+        elif self.mean_type == ModelMeanType.EPSILON:
+            target = noise
+        else:
+            raise ValueError(f"Unknown mean type: {self.mean_type}")
 
         assert model_output.shape == target.shape == x_start.shape
 
         mse = mean_flat((target - model_output) ** 2)
 
-        if reweight == True:
+        if reweight:
             if self.mean_type == ModelMeanType.START_X:
                 weight = self.SNR(ts - 1) - self.SNR(ts)
-                weight = th.where((ts == 0), 1.0, weight)
+                weight = th.where((ts == 0), th.ones_like(weight), weight)
                 loss = mse
             elif self.mean_type == ModelMeanType.EPSILON:
                 weight = (1 - self.alphas_cumprod[ts]) / ((1-self.alphas_cumprod_prev[ts])**2 * (1-self.betas[ts]))
-                weight = th.where((ts == 0), 1.0, weight)
+                weight = th.where((ts == 0), th.ones_like(weight), weight)
                 likelihood = mean_flat((x_start - self._predict_xstart_from_eps(x_t, ts, model_output))**2 / 2.0)
                 loss = th.where((ts == 0), likelihood, mse)
         else:
-            weight = th.tensor([1.0] * len(target)).to(device)
+            weight = th.ones_like(mse)
 
         terms["loss"] = weight * loss
         
-        # update Lt_history & Lt_count
-        for t, loss in zip(ts, terms["loss"]):
+        # Update Lt_history & Lt_count
+        for t, l in zip(ts, terms["loss"]):
             if self.Lt_count[t] == self.history_num_per_term:
                 Lt_history_old = self.Lt_history.clone()
                 self.Lt_history[t, :-1] = Lt_history_old[t, 1:]
-                self.Lt_history[t, -1] = loss.detach()
+                self.Lt_history[t, -1] = l.detach()
             else:
-                try:
-                    self.Lt_history[t, self.Lt_count[t]] = loss.detach()
-                    self.Lt_count[t] += 1
-                except:
-                    print(t)
-                    print(self.Lt_count[t])
-                    print(loss)
-                    raise ValueError
+                self.Lt_history[t, self.Lt_count[t]] = l.detach()
+                self.Lt_count[t] += 1
 
         terms["loss"] /= pt
         return terms
